@@ -82,7 +82,7 @@ def _init_weights(
                 with torch.no_grad():
                     p /= math.sqrt(n_residuals_per_layer * n_layer)
 
-
+#testing
 class MixerModel(nn.Module):
     def __init__(
         self,
