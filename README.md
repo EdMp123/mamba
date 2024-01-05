@@ -11,6 +11,9 @@ Mamba is a new state space model architecture showing promising performance on i
 It is based on the line of progress on [structured state space models](https://github.com/state-spaces/s4),
 with an efficient hardware-aware design and implementation in the spirit of [FlashAttention](https://github.com/Dao-AILab/flash-attention).
 
+## Changes made in this fork
+A training and testing script was added for classification tasks of time series data. The training script can be found under mamba_ssm>modules>train.py. 
+
 ## Installation
 
 - `pip install causal-conv1d>=1.1.0`: an efficient implementation of a simple causal Conv1d layer used inside the Mamba block.
