@@ -13,9 +13,27 @@ from scipy.stats import binom_test
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 from sklearn.model_selection import train_test_split
 from collections import Counter
-from mamba_simple import 
+from mamba_simple import Block, Mamba
 
+#Making a class that uses the Mamba architecture for a classification task
+class MambaClass(nn.Module):
+    def __init__(self, num_blocks, d_model, num_classes):
+        super(MambaClass, self).__init__()
+        self.layers = nn.ModuleList([
+            Block(dim=d_model, mixer_cls=Mamba(d_model=d_model)) 
+            for _ in range(num_blocks)
+        ])
+        self.classifier = nn.Linear(d_model, num_classes)
 
+    def forward(self, x):
+        for block in self.layers:
+            x = block(x)
+
+        # Assuming x is of shape [batch, seq_len, features]
+        # Aggregate over the sequence length - Example: taking the mean
+        x = x.mean(dim=1)
+
+        return self.classifier(x)
 
 # Load data and labels
 train_data = np.load(r'C:\Users\eddyt\Desktop\Semantic_decoder_Git\semantic-decoding\processed_data\3D_CNN\data-1.npy')
@@ -89,7 +107,7 @@ test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, drop_last=Tr
 
 
 # Initialize model
-model = Simple3dCNN_layers(num_classes=3)
+model = MambaClass(num_classes=3)
 model.to(model.device)
 
 # Define loss function and optimizer
@@ -122,7 +140,7 @@ for iteration in range(num_iterations):
     print(f"Iteration: {iteration + 1}/{num_iterations}")
 
     # Reinitialize model and optimizer
-    model = Simple3dCNN_layers(num_classes=3).to(model.device)
+    model = MambaClass(num_classes=3).to(model.device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
     # Training loop
