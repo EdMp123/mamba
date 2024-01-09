@@ -15,36 +15,59 @@ from sklearn.model_selection import train_test_split
 from collections import Counter
 from mamba_simple import Block, Mamba
 
+# Define the device based on GPU availability
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 #Making a class that uses the Mamba architecture for a classification task
 class MambaClass(nn.Module):
     def __init__(self, num_blocks, d_model, num_classes):
         super(MambaClass, self).__init__()
+
+        # Modify the lambda to accept an argument and pass it to Mamba
+        mamba_creator = lambda dim: Mamba(d_model=dim)
+
         self.layers = nn.ModuleList([
-            Block(dim=d_model, mixer_cls=Mamba(d_model=d_model)) 
+            Block(dim=d_model, mixer_cls=mamba_creator)
             for _ in range(num_blocks)
         ])
-        self.classifier = nn.Linear(d_model, num_classes)
+
+        # Use a dummy input to determine the output size after the blocks
+        with torch.no_grad():
+             # Ensure the dummy input is on the same device as the model
+            dummy_input = torch.zeros(1, 145, d_model).float().to(device)  # [batch, time series, channels]
+            dummy_output = self.forward_blocks(dummy_input)
+        flattened_size = dummy_output.view(dummy_output.size(0), -1).shape[1]
+
+        # Now create the classifier with the correct input size
+        self.classifier = nn.Linear(flattened_size, num_classes)
+
+    def forward_blocks(self, x):
+        # Function to forward the input through the blocks
+        for block in self.layers:
+            output, _ = block(x)
+            x = output
+        return x
 
     def forward(self, x):
-        for block in self.layers:
-            x = block(x)
+        x = self.forward_blocks(x)
+        x = x.view(x.size(0), -1)  # Flatten the tensor
+        final_output = self.classifier(x)
+        if not self.training:
+            final_output = F.softmax(final_output, dim=1)
+        return final_output
 
-        # Assuming x is of shape [batch, seq_len, features]
-        # Aggregate over the sequence length - Example: taking the mean
-        x = x.mean(dim=1)
-
-        return self.classifier(x)
 
 # Load data and labels
-train_data = np.load(r'C:\Users\eddyt\Desktop\Semantic_decoder_Git\semantic-decoding\processed_data\3D_CNN\data-1.npy')
-train_labels = np.load(r'C:\Users\eddyt\Desktop\Semantic_decoder_Git\semantic-decoding\processed_data\3D_CNN\data-label-1.npy')
+train_data = np.load(r'/mnt/c/Users/eddyt/Desktop/imagined speech classification/mamba/data/388 channels/train-388.npy')
+train_labels = np.load(r'/mnt/c/Users/eddyt/Desktop/imagined speech classification/mamba/data/388 channels/train-label-388.npy')
 
-test_data = np.load(r'C:\Users\eddyt\Desktop\Semantic_decoder_Git\semantic-decoding\processed_data\3D_CNN\data-2.npy')
-test_labels = np.load(r'C:\Users\eddyt\Desktop\Semantic_decoder_Git\semantic-decoding\processed_data\3D_CNN\data-label-2.npy')
+test_data = np.load(r'/mnt/c/Users/eddyt/Desktop/imagined speech classification/mamba/data/388 channels/test-388.npy')
+test_labels = np.load(r'/mnt/c/Users/eddyt/Desktop/imagined speech classification/mamba/data/388 channels/test-label-388.npy')
 
 # Add a parameter for specifying the directory to save the weights
-save_dir = r'C:\Users\eddyt\Desktop\Semantic_decoder_Git\semantic-decoding\processed_data\weights'  # Set your desired path here
-os.makedirs(save_dir, exist_ok=True)
+#save_dir = r'C:\Users\eddyt\Desktop\Semantic_decoder_Git\semantic-decoding\processed_data\weights'  # Set your desired path here
+#os.makedirs(save_dir, exist_ok=True)
 
 # Function to save weights of the first few layers
 def save_layer_weights(model, epoch, iteration, save_dir):
@@ -106,9 +129,11 @@ train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, drop_last=T
 test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, drop_last=True)
 
 
-# Initialize model
-model = MambaClass(num_classes=3)
-model.to(model.device)
+num_blocks = 5 # number of mamba blocks 
+d_model = 388  # dimensionality matches the number of channels
+num_classes= 3 # number of classes in the classification task
+
+model = MambaClass(num_blocks=num_blocks, d_model=d_model, num_classes=num_classes).to(device)
 
 # Define loss function and optimizer
 criterion = nn.CrossEntropyLoss()
@@ -116,20 +141,20 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 
 # Define the number of splits for cross-validation
-num_epochs=50
+num_epochs=50   #for default testing use 50
 n_splits = 3
 kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
 
 #setup project name for W&B
-wandb.init(project="3D CNN")
-wandb.config.num_epochs = num_epochs
-wandb.config.batch_size = 8
-wandb.config.learning_rate = 0.001
+#wandb.init(project="Mamba")
+#wandb.config.num_epochs = num_epochs
+#wandb.config.batch_size = 8
+#wandb.config.learning_rate = 0.001
 
 
 # Initialize accumulators
 total_accuracy= 0
-num_iterations = 50
+num_iterations = 50  #for normal testing use 50
 
 # Initialize accumulators
 iteration_accuracies = []  # List to store accuracy of each iteration
@@ -140,7 +165,7 @@ for iteration in range(num_iterations):
     print(f"Iteration: {iteration + 1}/{num_iterations}")
 
     # Reinitialize model and optimizer
-    model = MambaClass(num_classes=3).to(model.device)
+    model = MambaClass(num_blocks=num_blocks, d_model=d_model, num_classes=num_classes).to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
     # Training loop
@@ -148,8 +173,8 @@ for iteration in range(num_iterations):
         model.train()
         total_loss = 0
         for i, (inputs, labels) in enumerate(train_loader):
-            inputs = inputs.float().to(model.device)
-            labels = labels.long().to(model.device) - 1
+            inputs = inputs.float().to(device)
+            labels = labels.long().to(device) - 1
 
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -164,8 +189,8 @@ for iteration in range(num_iterations):
         print(f"Epoch {epoch + 1}/{num_epochs}, Training Loss: {average_loss:.4f}")
 
         # Save weights every 5 epochs
-        if epoch % 5 == 0:
-            save_layer_weights(model, epoch, iteration, save_dir)
+        #if epoch % 5 == 0:
+        #    save_layer_weights(model, epoch, iteration, save_dir)
 
     # Testing loop
     model.eval()
@@ -174,11 +199,16 @@ for iteration in range(num_iterations):
 
     with torch.no_grad():
         for inputs, labels in test_loader:
-            inputs = inputs.float().to(model.device)
-            labels = (labels.long() - 1).to(model.device)
+            inputs = inputs.float().to(device)
+            labels = labels.long().to(device) - 1
 
             outputs = model(inputs)
             _, predicted = torch.max(outputs.data, 1)
+
+            # Print model predictions and actual labels for comparison
+            print(f"Model predictions: {predicted}")
+            print(f"Actual labels: {labels}")
+
             correct_predictions += (predicted == labels).sum().item()
             total_predictions += labels.size(0)
 
@@ -205,6 +235,6 @@ plt.title('Rolling Average Accuracy per Iteration')
 plt.show()
 
 # Finalize wandb run
-wandb.finish()
+#wandb.finish()
 
 

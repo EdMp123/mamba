@@ -2,3 +2,10 @@
 *.egg-info/
 build/
 **.so
+*data/
+cuda-repo-ubuntu2004-11-6-local_11.6.0-510.39.01-1_amd64.deb
+cuda-repo-wsl-ubuntu-12-3-local_12.3.2-1_amd64.deb
+cuda-repo-wsl-ubuntu-12-3-local_12.3.2-1_amd64.deb.1
+
+
+

@@ -324,12 +324,14 @@ class Block(nn.Module):
     def forward(
         self, hidden_states: Tensor, residual: Optional[Tensor] = None, inference_params=None
     ):
+
         r"""Pass the input through the encoder layer.
 
         Args:
             hidden_states: the sequence to the encoder layer (required).
             residual: hidden_states = Mixer(LN(residual))
         """
+
         if not self.fused_add_norm:
             residual = (hidden_states + residual) if residual is not None else hidden_states
             hidden_states = self.norm(residual.to(dtype=self.norm.weight.dtype))
